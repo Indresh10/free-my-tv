@@ -39,7 +39,7 @@ final class Photos {
     /** The screensaver's photo size (DreamView loads them 10% larger than the screen, for the slow zoom). */
     static final int W = 2112, H = 1188;
     /** At most this many (about 300 KB each); later ones wait in the folder until some are removed. */
-    static final int MAX = 100;
+    static final int MAX = 1000;
     /** Smaller ones are icons and thumbnails, not photos. */
     private static final int MIN_SIDE = 640;
 
@@ -122,9 +122,12 @@ final class Photos {
     private static File built, building;
     private static Backdrop backdrop;
 
+    /** 4 hours between wallpaper rotations. */
+    static final long ROTATION_INTERVAL = 4 * 3_600_000L;
+
     /**
-     * This hour's photo, ready to draw as the home screen's background, or null (off, or the first one still being
-     * built). When the hour changes, the previous one stays until the new one is ready; then `ready` runs.
+     * This photo (rotated every 4 hours), ready to draw as the home screen's background, or null (off, or the first one still being
+     * built). When the interval changes, the previous one stays until the new one is ready; then `ready` runs.
      */
     static synchronized Backdrop backdrop(Context c, Runnable ready) {
         if (!on(c)) {
@@ -133,7 +136,7 @@ final class Photos {
             return null;
         }
         List<File> list = files(c);
-        File want = list.get((int) ((System.currentTimeMillis() / 3_600_000L) % list.size()));
+        File want = list.get((int) ((System.currentTimeMillis() / ROTATION_INTERVAL) % list.size()));
         if (!want.equals(built) && !want.equals(building)) {
             building = want;
             worker.execute(() -> {

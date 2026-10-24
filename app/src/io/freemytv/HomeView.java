@@ -870,6 +870,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         bgTo = b;
         bgFadeAt = up;
         nightPair = false;
+        if (b != null) {
+            lightGradient = Ui.gradient(h, b.lightTint, blend(b.lightTint, 0xFF000000, 0.08f));
+            nightGradient = Ui.gradient(h, b.nightTint, blend(b.nightTint, 0xFF000000, 0.35f));
+        } else {
+            lightGradient = Ui.gradient(h, 0xFFF5F5F7, 0xFFE2E2E7);
+            nightGradient = Ui.gradient(h, 0xFF1C1C1E, 0xFF0B0B0D);
+        }
         if (b == null || glassOf(b) == null) return;
         if (bgFrom == null || glassOf(bgFrom) == null) {
             scene.setFrost(frostOf(b));
@@ -2810,8 +2817,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             }
         }
         for (Recs.Pick p : recs.wanted()) recs.backdrop(p);   // all three tabs preloaded: switching tabs is instant
-        // Picks bring their own background; without them (no TMDB key), your photo if there is one.
-        boolean own = !picksOn() && Photos.on(getContext());
+        // Custom wallpaper takes priority on the home screen
+        boolean own = Photos.on(getContext());
         Backdrop b = own ? Photos.backdrop(getContext(), ownReady) : cards.isEmpty() ? null : recs.backdrop(cards.get(0));
         if (b != null || (cards.isEmpty() && !own)) showBackdrop(b);
         heroDirty = true;

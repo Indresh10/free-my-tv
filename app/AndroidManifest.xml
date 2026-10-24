@@ -39,6 +39,10 @@
         <package android:name="com.peacock.peacockfiretv" />
         <package android:name="com.globo.globotv" />
         <package android:name="com.spotify.tv.android" />
+        <package android:name="com.plexapp.android" />
+        <package android:name="tv.airtel.xstream.tvapp" />
+        <package android:name="in.startv.hotstar" />
+        <package android:name="com.sonyliv" />
         <package android:name="com.tcl.tv" />
         <package android:name="com.google.android.tv" />
         <package android:name="com.mediatek.wwtv.tvcenter" />

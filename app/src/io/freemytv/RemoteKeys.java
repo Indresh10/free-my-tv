@@ -57,11 +57,22 @@ final class RemoteKeys {
         if ((source & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
                 || (source & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK) return false;
         int keyCode = e.getKeyCode() == KEY_YOUTUBE_TCL ? Prefs.KEY_YOUTUBE : e.getKeyCode();
-        // Sony sends BUTTON_9 for five app buttons (BUTTON_4 for Netflix, BUTTON_8 for Google Play): only the scan code
-        // tells them apart.
-        if (SONY && (keyCode == KeyEvent.KEYCODE_BUTTON_4 || keyCode == KeyEvent.KEYCODE_BUTTON_8
-                || keyCode == KeyEvent.KEYCODE_BUTTON_9)) {
-            keyCode = Prefs.SONY_KEY + e.getScanCode();
+        if (SONY) {
+            int scan = e.getScanCode();
+            int raw = e.getKeyCode();
+            // Map Indian and Global Sony Bravia scan codes and key codes:
+            if (scan == 269 || scan == 496 || raw == 3004) keyCode = Prefs.KEY_SONY_CORE;
+            else if (scan == 758 || scan == 583) keyCode = Prefs.KEY_SONY_NETFLIX;
+            else if (scan == 271 || scan == 491 || raw == 3006) keyCode = Prefs.KEY_SONY_DISNEY;
+            else if (scan == 652 || scan == 490) keyCode = Prefs.KEY_SONY_PRIME;
+            else if (scan == 569 || scan == 485) keyCode = Prefs.KEY_SONY_YOUTUBE;
+            else if (scan == 653 || scan == 507) keyCode = Prefs.KEY_SONY_CRUNCHYROLL;
+            else if (scan == 587) keyCode = Prefs.KEY_SONY_PLAY;
+            else if (raw == KeyEvent.KEYCODE_BUTTON_4 || raw == KeyEvent.KEYCODE_BUTTON_8
+                    || raw == KeyEvent.KEYCODE_BUTTON_9 || raw == KeyEvent.KEYCODE_BUTTON_2
+                    || raw == KeyEvent.KEYCODE_BUTTON_14 || raw == KeyEvent.KEYCODE_BUTTON_15) {
+                keyCode = Prefs.SONY_KEY + scan;
+            }
         }
         boolean ours = false;
         for (int key : Prefs.KEYS) ours |= key == keyCode;

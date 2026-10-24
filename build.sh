@@ -7,7 +7,8 @@ cd "$(dirname "$0")"
 # --- Tools
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
 if [ -z "$SDK" ]; then
-  for d in "$HOME/Library/Android/sdk" "$HOME/Android/Sdk" /opt/homebrew/share/android-commandlinetools \
+  for d in "$HOME/Library/Android/sdk" "$HOME/Android/Sdk" "$HOME/AppData/Local/Android/Sdk" \
+           /opt/homebrew/share/android-commandlinetools \
            /usr/local/share/android-commandlinetools /usr/lib/android-sdk; do
     if [ -d "$d/build-tools" ]; then SDK="$d"; break; fi
   done
@@ -16,9 +17,17 @@ fi
 BT="$SDK/build-tools/$(ls "$SDK/build-tools" | sort -V | tail -1)"
 AJ="$(ls -d "$SDK"/platforms/android-*/android.jar 2>/dev/null | sort -V | tail -1 || true)"
 [ -f "${AJ:-}" ] || { echo "Android platform not found. Run: sdkmanager \"platforms;android-34\""; exit 1; }
+if [ -z "${JAVA_HOME:-}" ]; then
+  for j in "/c/Program Files/Java/latest" "/c/Program Files/Java"/jdk-* /usr/lib/jvm/java-17-openjdk* /usr/lib/jvm/default-java; do
+    if [ -d "$j/bin" ]; then JAVA_HOME="$j"; break; fi
+  done
+fi
 JAVAC="${JAVA_HOME:+$JAVA_HOME/bin/}javac"
-KEYTOOL="${JAVA_HOME:+$JAVA_HOME/bin/}keytool"
 command -v "$JAVAC" >/dev/null 2>&1 || { echo "JDK not found. Install JDK 17 and set JAVA_HOME."; exit 1; }
+JDK_BIN="$(dirname "$(command -v "$JAVAC")")"
+JAVA_CMD="$JDK_BIN/java"
+JAR="$JDK_BIN/jar"
+KEYTOOL="$JDK_BIN/keytool"
 
 # --- Settings: config.properties -> Config.java
 if [ ! -f config.properties ]; then
@@ -70,7 +79,7 @@ EOF
 "$BT/aapt2" compile --dir app/res -o out/res.zip
 # Fonts uncompressed: Android reads them straight from the APK.
 "$BT/aapt2" link -o out/base.apk -I "$AJ" --manifest app/AndroidManifest.xml --java out/gen out/res.zip \
-  --min-sdk-version 26 --target-sdk-version 33 -A app/assets -0 ttf
+  --min-sdk-version 26 --target-sdk-version 34 -A app/assets -0 ttf
 # Windows aapt2 packs assets with backslash separators ("assets/symbols\x.png") and Android
 # cannot find them: the home screen loses its icons and fonts. Rename the zip entries to "/".
 case "$(uname -s 2>/dev/null)" in
@@ -110,16 +119,25 @@ class FixAssets {
     }
 }
 EOF
-    "${JAVA_HOME:+$JAVA_HOME/bin/}java" out/FixAssets.java out/base.apk
+    "$JAVA_CMD" out/FixAssets.java out/base.apk
     ;;
 esac
 # On Windows javac separates paths with ";", and d8 and apksigner are .bat files.
-CPSEP=:; BAT=; case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) CPSEP=";"; BAT=.bat ;; esac
-"$JAVAC" -nowarn -Xlint:-options -source 8 -target 8 -bootclasspath "$AJ$CPSEP$BT/core-lambda-stubs.jar" -classpath "$AJ" \
+CPSEP=:; BAT=; J_AJ="$AJ"; J_LAMBDA="$BT/core-lambda-stubs.jar"; D8_LIB="$AJ"
+case "$(uname -s 2>/dev/null)" in
+  MINGW*|MSYS*|CYGWIN*)
+    CPSEP=";"
+    BAT=.bat
+    J_AJ="$(cygpath -w "$AJ")"
+    J_LAMBDA="$(cygpath -w "$BT/core-lambda-stubs.jar")"
+    D8_LIB="$(cygpath -w "$AJ")"
+    ;;
+esac
+"$JAVAC" -nowarn -Xlint:-options -source 8 -target 8 -bootclasspath "$J_AJ$CPSEP$J_LAMBDA" -classpath "$J_AJ" \
   -encoding UTF-8 -d out/classes $(find app/src out/gen -name '*.java')
-"$BT/d8$BAT" --release --min-api 26 --lib "$AJ" --output out $(find out/classes -name '*.class')
+"$BT/d8$BAT" --release --min-api 26 --lib "$D8_LIB" --output out $(find out/classes -name '*.class')
 if command -v zip >/dev/null; then (cd out && zip -qj base.apk classes.dex)
-else "${JAVA_HOME:+$JAVA_HOME/bin/}jar" -u -M -f out/base.apk -C out classes.dex; fi # Git Bash has no zip
+else "$JAR" -u -M -f out/base.apk -C out classes.dex; fi # Git Bash has no zip
 "$BT/zipalign" -f -p 4 out/base.apk out/aligned.apk
 
 # --- Sign with your own key (created once; updates need the same key, so keep freemytv.keystore)

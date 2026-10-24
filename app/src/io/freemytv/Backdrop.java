@@ -47,15 +47,19 @@ final class Backdrop {
     final Bitmap lightImage;            // by day: the background (the lightened frosted version, scaled up on screen)
     final int[] nightFrost, nightGlass; // at night: frosted (the bottom drawer's frosted glass) and glass, darkened
     final Bitmap nightImage;            // at night: the background (the darkened frosted version)
+    final int dominantColor;
+    final int lightTint;
+    final int nightTint;
 
     private Backdrop(Bitmap image, int[] frost, int[] glass, Bitmap wide, Bitmap tall, int[] light, int[] lightGlass,
-                     int[] night, int[] nightGlass) {
-        this(image, frost, glass, wide, tall, light, lightGlass, night, nightGlass, light, night, FW, FH);
+                     int[] night, int[] nightGlass, int dom, int lTint, int nTint) {
+        this(image, frost, glass, wide, tall, light, lightGlass, night, nightGlass, light, night, FW, FH, dom, lTint, nTint);
     }
 
     /** `lightBg` and `nightBg` (bw × bh): the background itself, when it isn't the frosted version. */
     private Backdrop(Bitmap image, int[] frost, int[] glass, Bitmap wide, Bitmap tall, int[] light, int[] lightGlass,
-                     int[] night, int[] nightGlass, int[] lightBg, int[] nightBg, int bw, int bh) {
+                     int[] night, int[] nightGlass, int[] lightBg, int[] nightBg, int bw, int bh,
+                     int dom, int lTint, int nTint) {
         this.image = image;
         this.frost = frost;
         this.glass = glass;
@@ -69,6 +73,9 @@ final class Backdrop {
         this.nightGlass = nightGlass;
         lightImage = lightBg == null ? null : Bitmap.createBitmap(lightBg, bw, bh, Bitmap.Config.ARGB_8888);
         nightImage = nightBg == null ? null : Bitmap.createBitmap(nightBg, bw, bh, Bitmap.Config.ARGB_8888);
+        this.dominantColor = dom;
+        this.lightTint = lTint;
+        this.nightTint = nTint;
     }
 
     static Backdrop make(Bitmap src, boolean forLight) {
@@ -92,6 +99,9 @@ final class Backdrop {
             out = copy;
         }
         Canvas c = new Canvas(out);
+        int dom = dominantColor(out);
+        int lTint = blendColor(0xFFF5F5F7, dom, 0.16f);
+        int nTint = blendColor(0xFF101014, dom, 0.22f);
         if (forLight) {
             // Light design: everything comes from the photo without scrims.
             Bitmap wide = card(out, WIDE_W, WIDE_H), tall = card(out, TALL_W, TALL_H);
@@ -105,10 +115,10 @@ final class Backdrop {
                 int[] sharp = reduce(out, GW, GH, 1, 1);
                 int[] lightBg = ramp(sharp.clone(), 0.82f, 0.45f, true), nightBg = ramp(sharp, 0.76f, 0.5f, false);
                 out.recycle();
-                return new Backdrop(null, frost, null, wide, tall, light, lightGlass, night, nightGlass, lightBg, nightBg, GW, GH);
+                return new Backdrop(null, frost, null, wide, tall, light, lightGlass, night, nightGlass, lightBg, nightBg, GW, GH, dom, lTint, nTint);
             }
             out.recycle();
-            return new Backdrop(null, frost, null, wide, tall, light, lightGlass, night, nightGlass);
+            return new Backdrop(null, frost, null, wide, tall, light, lightGlass, night, nightGlass, dom, lTint, nTint);
         }
 
         float boost = Math.max(0, Math.min(0.3f, (luminance(out, 0, 0.22f, 0.5f, 0.62f) - 0.22f) * 1.1f));
@@ -135,7 +145,7 @@ final class Backdrop {
 
         int[] frost = reduce(out, FW, FH, 3, 3);
         int[] glass = reduce(out, GW, GH, 2, 2);
-        return new Backdrop(gpu(out), frost, glass, null, null, null, null, null, null);
+        return new Backdrop(gpu(out), frost, glass, null, null, null, null, null, null, dom, lTint, nTint);
     }
 
     /** How many times smaller the screensaver photo's frosted version is (the glass math uses the same number). */
@@ -304,5 +314,38 @@ final class Backdrop {
 
     private static int black(float a) {
         return Math.round(Math.max(0, Math.min(1, a)) * 255) << 24;
+    }
+
+    /** Extracts the prominent vibrant color from the wallpaper for base tinting. */
+    static int dominantColor(Bitmap b) {
+        if (b == null) return 0xFF3A7BD5;
+        int bw = b.getWidth(), bh = b.getHeight();
+        int stepX = Math.max(1, bw / 32), stepY = Math.max(1, bh / 32);
+        float bestScore = -1;
+        int bestColor = 0xFF3A7BD5;
+        float[] hsv = new float[3];
+        for (int y = 0; y < bh; y += stepY) {
+            for (int x = 0; x < bw; x += stepX) {
+                int p = b.getPixel(x, y);
+                android.graphics.Color.colorToHSV(p, hsv);
+                float s = hsv[1], v = hsv[2];
+                if (v > 0.18f && v < 0.92f && s > 0.18f) {
+                    float score = s * v;
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestColor = p | 0xFF000000;
+                    }
+                }
+            }
+        }
+        return bestColor;
+    }
+
+    private static int blendColor(int from, int to, float ratio) {
+        float f = Math.max(0, Math.min(1, ratio)), inv = 1 - f;
+        int r = Math.round(((from >> 16) & 255) * inv + ((to >> 16) & 255) * f);
+        int g = Math.round(((from >> 8) & 255) * inv + ((to >> 8) & 255) * f);
+        int b = Math.round((from & 255) * inv + (to & 255) * f);
+        return 0xFF000000 | (r << 16) | (g << 8) | b;
     }
 }

@@ -213,9 +213,13 @@ final class Prefs {
 
     private static String defaultApp(int keyCode) {
         switch (keyCode) {
-            case KEY_NETFLIX: case KEY_STEM_NETFLIX: return "com.netflix.ninja";
-            case KEY_YOUTUBE: return "com.google.android.youtube.tv";
+            case KEY_NETFLIX: case KEY_STEM_NETFLIX: case KEY_SONY_NETFLIX: return "com.netflix.ninja";
+            case KEY_YOUTUBE: case KEY_SONY_YOUTUBE: return "com.google.android.youtube.tv";
             case KEY_PRIME: return "com.amazon.amazonvideo.livingroom";
+            case KEY_SONY_PRIME: return "com.plexapp.android";
+            case KEY_SONY_CORE: return "tv.airtel.xstream.tvapp";
+            case KEY_SONY_DISNEY: return "com.apple.atve.androidtv.appletv";
+            case KEY_SONY_CRUNCHYROLL: return "com.spotify.tv.android";
             case KEY_TCL_CHANNEL: return "";
             case KEY_MI: return HomeMode.PKG;   // our home screen: the remote has no other Home button
             default: return "";
