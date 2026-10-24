@@ -20,10 +20,14 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 /** Reads the TV platform's shared Continue Watching entries when the device grants access. */
 final class WatchNext {
@@ -103,6 +107,7 @@ final class WatchNext {
         for (Entry entry : entries) {
             if (items.size() >= Prefs.watchNextCount()) break;
             if (HomeApps.launchIntent(context.getPackageManager(), entry.pkg) == null) continue;
+            if ("org.videolan.vlc".equals(entry.pkg)) continue; // ignore files from VLC
             Recs.Pick item = new Recs.Pick();
             item.watchNext = true;
             item.kind = "watch-next";
@@ -119,9 +124,80 @@ final class WatchNext {
             if (entry.duration > 0) details.append(" · ").append(time(entry.position)).append('/').append(time(entry.duration));
             item.meta = details.toString();
             item.artwork = artwork(context, entry.art);
+            if (item.artwork == null && !TextUtils.isEmpty(entry.title)) {
+                item.artwork = tmdbArtwork(entry.title);
+                if (item.artwork != null) {
+                    String clean = cleanTitle(entry.title);
+                    if (!clean.isEmpty()) item.title = clean;
+                }
+            }
+            if (item.artwork == null) continue;
             items.add(item);
         }
         return items;
+    }
+
+    private static String cleanTitle(String raw) {
+        if (TextUtils.isEmpty(raw)) return "";
+        String s = raw.replace('.', ' ').replace('_', ' ').trim();
+        s = s.replaceAll("(?i)\\s+(s\\d+e\\d+|s\\d+|e\\d+|season\\s*\\d+|episode\\s*\\d+|1080p|720p|2160p|4k|uhd|x264|x265|hevc|web-?dl|webrip|bluray|hdtv|dvdrip|proper|repack|remux).*$", "");
+        s = s.replaceAll("\\s*\\(\\d{4}\\)\\s*$", "").trim();
+        s = s.replaceAll("\\s*[-–]\\s*(hindi|tamil|telugu|dubbed|dual audio|english).*$", "").trim();
+        return s.trim();
+    }
+
+    private static Bitmap tmdbArtwork(String rawTitle) {
+        String clean = cleanTitle(rawTitle);
+        if (clean.isEmpty()) return null;
+        String key = Config.TMDB_KEY.trim();
+        if (key.isEmpty()) return null;
+        synchronized (ARTWORK) {
+            Bitmap cached = ARTWORK.get("tmdb:" + clean);
+            if (cached != null) return cached;
+        }
+        try {
+            boolean bearer = key.startsWith("eyJ");
+            String url = "https://api.themoviedb.org/3/search/multi?query=" + URLEncoder.encode(clean, "UTF-8")
+                    + (bearer ? "" : "&api_key=" + URLEncoder.encode(key, "UTF-8"));
+            HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(8000);
+            conn.setRequestProperty("Accept", "application/json");
+            if (bearer) conn.setRequestProperty("Authorization", "Bearer " + key);
+            try {
+                if (conn.getResponseCode() != 200) return null;
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                try (InputStream in = conn.getInputStream()) {
+                    byte[] buf = new byte[8192];
+                    int n;
+                    while ((n = in.read(buf)) >= 0) out.write(buf, 0, n);
+                }
+                JSONObject json = new JSONObject(out.toString("UTF-8"));
+                JSONArray results = json.optJSONArray("results");
+                if (results == null || results.length() == 0) return null;
+                String imagePath = null;
+                for (int i = 0; i < results.length(); i++) {
+                    JSONObject item = results.optJSONObject(i);
+                    if (item == null) continue;
+                    imagePath = item.optString("backdrop_path", "");
+                    if (imagePath.isEmpty()) imagePath = item.optString("poster_path", "");
+                    if (!imagePath.isEmpty()) break;
+                }
+                if (imagePath == null || imagePath.isEmpty()) return null;
+                Bitmap bmp = downloadArtwork(Uri.parse("https://image.tmdb.org/t/p/w780" + imagePath));
+                if (bmp != null) {
+                    synchronized (ARTWORK) {
+                        ARTWORK.put("tmdb:" + clean, bmp);
+                    }
+                }
+                return bmp;
+            } finally {
+                conn.disconnect();
+            }
+        } catch (Exception e) {
+            AppLog.w("TMDB artwork lookup failed for " + clean + ": " + e.getMessage());
+            return null;
+        }
     }
 
     private static final class Entry {

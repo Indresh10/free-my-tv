@@ -899,7 +899,8 @@ public class SettingsActivity extends Activity {
 
         private static final String[] UNITS = {"auto", "C", "F"}, THEMES = {"auto", "light", "dark"};
         /** Home Settings: language, temperature, theme, my photos, sounds, weather, city, quotes, Continue Watching, then coins. */
-        private static final int PHOTOS_ROW = 3, CITY_ROW = 6, WATCH_NEXT_ROW = 8, COIN_ROWS = 9;
+        private static final int PHOTOS_ROW = 3, CITY_ROW = 6, WATCH_NEXT_ROW = 8, WATCH_NEXT_LAYOUT_ROW = 9, COIN_ROWS = 10;
+        private static final int[] WATCH_NEXT_COUNTS = {4, 6, 8, 10, 15, 20};
 		/** Home Settings rows on screen at once (what fits above the hints at 1080p); a longer list scrolls. */
         private static final int SETTINGS_VISIBLE = 10;
 
@@ -918,6 +919,7 @@ public class SettingsActivity extends Activity {
             l.add(Ui.tr("City"));
             l.add(Ui.tr("Quotes widget"));
             l.add(Ui.tr("Continue watching items"));
+            l.add(Ui.tr("Continue watching layout"));
             l.add("Bitcoin");
             l.add("Ethereum");
             l.add("Solana");
@@ -942,6 +944,7 @@ public class SettingsActivity extends Activity {
             v[CITY_ROW] = !cityStatus.isEmpty() ? cityStatus : Prefs.city().isEmpty() ? "—" : Prefs.city();
             v[7] = onOff(Prefs.quotes());
             v[WATCH_NEXT_ROW] = String.valueOf(Prefs.watchNextCount());
+            v[WATCH_NEXT_LAYOUT_ROW] = Prefs.isWatchNextGrid() ? Ui.tr("Grid") : Ui.tr("Carousel");
             // No quotes widget, nowhere to show prices: the coins read as off (and stay locked) until it is back on.
             for (int i = COIN_ROWS; i < v.length; i++) v[i] = onOff(Prefs.quotes() && Prefs.coin(i - COIN_ROWS));
             return v;
@@ -1201,8 +1204,19 @@ public class SettingsActivity extends Activity {
                 case 5: Prefs.setWeather(!Prefs.weather()); break;
                 case CITY_ROW: return;
                 case 7: Prefs.setQuotes(!Prefs.quotes()); break;
-                case WATCH_NEXT_ROW:
-                    Prefs.setWatchNextCount(2 + (Prefs.watchNextCount() - 2 + dir + 3) % 3);
+                case WATCH_NEXT_ROW: {
+                    int cur = Prefs.watchNextCount();
+                    int idx = 0;
+                    for (int i = 0; i < WATCH_NEXT_COUNTS.length; i++) {
+                        if (WATCH_NEXT_COUNTS[i] == cur) { idx = i; break; }
+                        if (WATCH_NEXT_COUNTS[i] < cur) idx = i;
+                    }
+                    idx = (idx + dir + WATCH_NEXT_COUNTS.length) % WATCH_NEXT_COUNTS.length;
+                    Prefs.setWatchNextCount(WATCH_NEXT_COUNTS[idx]);
+                    break;
+                }
+                case WATCH_NEXT_LAYOUT_ROW:
+                    Prefs.setWatchNextLayout(Prefs.isWatchNextGrid() ? Prefs.WATCH_LAYOUT_CAROUSEL : Prefs.WATCH_LAYOUT_GRID);
                     break;
                 default:
                     if (!Prefs.quotes()) return;

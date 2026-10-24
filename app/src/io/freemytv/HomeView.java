@@ -149,12 +149,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private List<Recs.Pick> watchPrevious = new ArrayList<>();
     private int watchPreviousStart, watchSlideDirection;
     private long watchSlideAt;
-    private final RectF[] watchDrawRects = {new RectF(), new RectF()};
+    private final RectF[] watchDrawRects = new RectF[8];
+    private final RectF watchPeekLeftRect = new RectF(), watchPeekRightRect = new RectF();
     // The three tabs, then the round buttons at the top right (up to HomeApps.MAX_TOP).
     private final Spring[] topFocus = new Spring[TAB_SLOTS + HomeApps.MAX_TOP];
     private final RectF[] topRects = new RectF[TAB_SLOTS + HomeApps.MAX_TOP];
-    private final Spring[] cardFocus = new Spring[4];
-    private final RectF[] cardRects = new RectF[4];
+    private final Spring[] cardFocus = new Spring[8];
+    private final RectF[] cardRects = new RectF[8];
     private final List<HomeApps.Item> lightButtons = new ArrayList<>();
     private Paint lTitle, lTab, lTabOn, lCardTitle, lCardMeta, lQuote, lTip, lDate, lClock, lWeather, lClockQuote;
     private Shader lightGradient;
@@ -411,6 +412,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         for (int i = 0; i < cardFocus.length; i++) {
             cardFocus[i] = new Spring(0.32f, 0.78f, 0);
             cardRects[i] = new RectF();
+            watchDrawRects[i] = new RectF();
         }
         setLightButtons(HomeApps.topButtons());
         recs.setLight(true);
@@ -527,7 +529,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     private int watchTabIndex() {
-        return 0;
+        return picksOn() ? 1 : 0;
     }
 
     private boolean isWatchTab() {
@@ -545,7 +547,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             if (!picksOn()) {
                 tabNames = new String[] {Ui.tr("Continue watching")};
             } else if (mode == 4) {
-                tabNames = new String[] {Ui.tr("Continue watching"), Ui.tr("Explore"), Ui.tr("Movies"), Ui.tr("Shows")};
+                tabNames = new String[] {Ui.tr("Explore"), Ui.tr("Continue watching"), Ui.tr("Movies"), Ui.tr("Shows")};
             } else {
                 tabNames = new String[] {Ui.tr("Explore"), Ui.tr("Movies"), Ui.tr("Shows")};
             }
@@ -2129,7 +2131,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             handler.post(() -> {
                 int oldTabCount = tabCount();
                 watchNext = watching;
-                watchPageStart = Math.min(watchPageStart, Math.max(0, (watchNext.size() - 1) / 2 * 2));
+                watchPageStart = Math.min(watchPageStart, Math.max(0, watchNext.size() - 1));
                 if (tab >= tabCount()) tab = Math.max(0, tabCount() - 1);
                 if (zone == Z_TOP && topIndex < TAB_SLOTS && topIndex >= tabCount()) {
                     if (tabCount() > 0) topIndex = tabCount() - 1;
@@ -2914,22 +2916,41 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         float top = L_CARDS_TOP * k, left = MARGIN * k, rightEdge = CONTENT_R * k;
         if (isWatchTab()) {
-            float gap = 32 * k, peek = 48 * k;
-            float width = Math.min((rightEdge - left - 2 * peek - 3 * gap) / 2,
-                    (L_PLATTER_TOP - L_CARDS_TOP - 105) * k * 16 / 9);
-            float height = width * 9 / 16;
-            float rowLeft = left + peek + gap;
-            for (int i = 0; i < 2; i++) {
-                float cardLeft = rowLeft + i * (width + gap);
-                cardRects[i].set(cardLeft, top, cardLeft + width, top + height);
+            if (Prefs.isWatchNextGrid()) {
+                int cols = 4;
+                float gapX = 24 * k, gapY = 20 * k;
+                float totalW = rightEdge - left;
+                float width = (totalW - (cols - 1) * gapX) / cols;
+                float height = width * 9 / 16;
+                float gridTop = top - 18 * k;
+                for (int r = 0; r < 2; r++) {
+                    float rowTop = gridTop + r * (height + gapY + 36 * k);
+                    for (int c = 0; c < cols; c++) {
+                        int idx = r * cols + c;
+                        float cardLeft = left + c * (width + gapX);
+                        cardRects[idx].set(cardLeft, rowTop, cardLeft + width, rowTop + height);
+                    }
+                }
+                for (int i = 8; i < cardRects.length; i++) cardRects[i].setEmpty();
+            } else {
+                float gap = 32 * k, peek = 48 * k;
+                float width = Math.min((rightEdge - left - 2 * peek - 3 * gap) / 2,
+                        (L_PLATTER_TOP - L_CARDS_TOP - 105) * k * 16 / 9);
+                float height = width * 9 / 16;
+                float rowLeft = left + peek + gap;
+                for (int i = 0; i < 2; i++) {
+                    float cardLeft = rowLeft + i * (width + gap);
+                    cardRects[i].set(cardLeft, top, cardLeft + width, top + height);
+                }
+                for (int i = 2; i < cardRects.length; i++) cardRects[i].setEmpty();
             }
-            for (int i = 2; i < cardRects.length; i++) cardRects[i].setEmpty();
         } else {
             float ch = L_CARD_H * k, g = L_CARD_GAP * k, tall = L_TALL_W * k;
             float wide = (CONTENT_R - MARGIN) * k - 2 * tall - 2 * g;
             cardRects[0].set(left, top, left + wide, top + ch);
             cardRects[1].set(cardRects[0].right + g, top, cardRects[0].right + g + tall, top + ch);
             cardRects[2].set(cardRects[1].right + g, top, cardRects[1].right + g + tall, top + ch);
+            for (int i = 3; i < cardRects.length; i++) cardRects[i].setEmpty();
         }
         for (RectF r : cardRects) snap(r);
         for (HomeApps.Item it : lightButtons) {
@@ -2942,10 +2963,18 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /** The three cards of the current tab (Explore, Movies, Shows) and the background taken from the first one. */
     private void updateCards() {
-        int recommendationTab = tab - (picksOn() ? 1 : 0);
+        int recommendationTab;
+        if (!picksOn()) {
+            recommendationTab = -1;
+        } else if (tab == 0) {
+            recommendationTab = 0;
+        } else {
+            recommendationTab = tab - 1;
+        }
         List<Recs.Pick> list;
         if (isWatchTab()) {
-            int end = Math.min(watchNext.size(), watchPageStart + 2);
+            int visibleCount = Prefs.isWatchNextGrid() ? 8 : 2;
+            int end = Math.min(watchNext.size(), watchPageStart + visibleCount);
             list = new ArrayList<>(watchNext.subList(Math.min(watchPageStart, end), end));
         } else {
             list = recommendationTab >= 0 && recommendationTab < TAB_KIND.length
@@ -2979,6 +3008,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private void selectTab(int index) {
         if (index < 0 || index >= tabCount() || index == tab) return;
         tab = index;
+        if (isWatchTab()) {
+            watchPageStart = 0;
+            cardIndex = 0;
+        }
         updateCards();
         heroDirty = true;
     }
@@ -3056,15 +3089,23 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             c.drawText(tabs()[i], r.centerX() - p.measureText(tabs()[i]) / 2, r.centerY() + Ui.halfCap(p), p);
         }
         if (isWatchTab()) {
-            if (watchSlideAt != 0) {
-                float t = Ui.clamp((SystemClock.uptimeMillis() - watchSlideAt) / 360f);
-                t = t * t * (3 - 2 * t);
-                float pageWidth = cardRects[0].width() + 32 * k;
-                float distance = pageWidth * t * watchSlideDirection;
-                drawWatchPage(c, watchPrevious, watchPreviousStart, -distance, false, false);
-                drawWatchPage(c, watchNext, watchPageStart, watchSlideDirection * pageWidth - distance, true, false);
+            if (Prefs.isWatchNextGrid()) {
+                int top = -1;
+                int visibleCards = Math.min(cards.size(), cardRects.length);
+                for (int i = 0; i < visibleCards; i++) if (cardFocus[i].value > 0.02f && (top < 0 || cardFocus[i].value > cardFocus[top].value)) top = i;
+                for (int i = 0; i < visibleCards; i++) if (i != top) drawLightCard(c, i);
+                if (top >= 0) drawLightCard(c, top);
             } else {
-                drawWatchPage(c, watchNext, watchPageStart, 0, true, true);
+                if (watchSlideAt != 0) {
+                    float t = Ui.clamp((SystemClock.uptimeMillis() - watchSlideAt) / 360f);
+                    t = t * t * (3 - 2 * t);
+                    float pageWidth = cardRects[0].width() + 32 * k;
+                    float distance = pageWidth * t * watchSlideDirection;
+                    drawWatchPage(c, watchPrevious, watchPreviousStart, -distance, false, false);
+                    drawWatchPage(c, watchNext, watchPageStart, watchSlideDirection * pageWidth - distance, true, false);
+                } else {
+                    drawWatchPage(c, watchNext, watchPageStart, 0, true, true);
+                }
             }
         } else {
             int top = -1;
@@ -3090,18 +3131,30 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         c.clipRect(left, top - 30 * k, right, cardRects[0].bottom + 100 * k);
         if (showPreviews && start > 0) {
             float previewRight = cardRects[0].left - gap + offset;
-            watchDrawRects[0].set(previewRight - width, top, previewRight, top + height);
-            drawLightCard(c, 0, items.get(start - 1), watchDrawRects[0], false);
+            watchPeekLeftRect.set(previewRight - width, top, previewRight, top + height);
+            drawLightCard(c, 0, items.get(start - 1), watchPeekLeftRect, false);
+        }
+        int topIdx = -1;
+        if (focused) {
+            for (int i = 0; i < 2 && start + i < items.size(); i++) {
+                if (cardFocus[i].value > 0.02f && (topIdx < 0 || cardFocus[i].value > cardFocus[topIdx].value)) topIdx = i;
+            }
         }
         for (int i = 0; i < 2 && start + i < items.size(); i++) {
+            if (i == topIdx) continue;
             watchDrawRects[i].set(cardRects[i]);
             watchDrawRects[i].offset(offset, 0);
             drawLightCard(c, i, items.get(start + i), watchDrawRects[i], focused);
         }
+        if (topIdx >= 0 && start + topIdx < items.size()) {
+            watchDrawRects[topIdx].set(cardRects[topIdx]);
+            watchDrawRects[topIdx].offset(offset, 0);
+            drawLightCard(c, topIdx, items.get(start + topIdx), watchDrawRects[topIdx], focused);
+        }
         if (showPreviews && start + 2 < items.size()) {
             float previewLeft = cardRects[1].right + gap + offset;
-            watchDrawRects[1].set(previewLeft, top, previewLeft + width, top + height);
-            drawLightCard(c, 1, items.get(start + 2), watchDrawRects[1], false);
+            watchPeekRightRect.set(previewLeft, top, previewLeft + width, top + height);
+            drawLightCard(c, 1, items.get(start + 2), watchPeekRightRect, false);
         }
         c.restore();
     }
@@ -3164,14 +3217,19 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             c.drawRoundRect(cell, r, r, fill);
         }
         if (p != null && p.watchNext && p.progressPercent > 0) {
-            float barH = 6 * k, inset = 18 * k;
-            tmp.set(cell.left + inset, cell.bottom - inset - barH, cell.right - inset, cell.bottom - inset);
+            float barH = (isWatchTab() && Prefs.isWatchNextGrid() ? 5 : 7) * k;
+            c.save();
+            clip.reset();
+            clip.addRoundRect(cell, r, r, Path.Direction.CW);
+            c.clipPath(clip);
             fill.setShader(null);
-            fill.setColor(0x99000000);
-            c.drawRoundRect(tmp, barH / 2, barH / 2, fill);
-            tmp.right = tmp.left + tmp.width() * p.progressPercent / 100f;
+            fill.setColor(0x80000000);
+            tmp.set(cell.left, cell.bottom - barH, cell.right, cell.bottom);
+            c.drawRect(tmp, fill);
+            tmp.right = cell.left + cell.width() * Math.min(1f, Math.max(0.02f, p.progressPercent / 100f));
             fill.setColor(0xFFFFFFFF);
-            c.drawRoundRect(tmp, barH / 2, barH / 2, fill);
+            c.drawRect(tmp, fill);
+            c.restore();
         }
         if (f > 0.01f) {
             if (lightSheens.length != cardRects.length) {
@@ -3202,9 +3260,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             c.restore();
         }
         if (p == null) return;
+        boolean isGrid = isWatchTab() && Prefs.isWatchNextGrid();
         fitPaint.set(lCardTitle);
-        c.drawText(TextUtils.ellipsize(p.title, fitPaint, bw, TextUtils.TruncateAt.END).toString(), base.left, base.bottom + 46 * k, lCardTitle);
-        if ((i == 0 || p.watchNext) && p.meta != null && !p.meta.isEmpty()) {
+        if (isGrid) fitPaint.setTextSize(18 * k);
+        c.drawText(TextUtils.ellipsize(p.title, fitPaint, bw, TextUtils.TruncateAt.END).toString(),
+                base.left, base.bottom + (isGrid ? 28 * k : 46 * k), fitPaint);
+        if ((i == 0 || p.watchNext) && p.meta != null && !p.meta.isEmpty() && !isGrid) {
             fitPaint.set(lCardMeta);
             if (p.watchNext) fitPaint.setTextSize(19 * k);
             c.drawText(TextUtils.ellipsize(p.meta, fitPaint, bw, TextUtils.TruncateAt.END).toString(),
@@ -3262,26 +3323,111 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     topIndex = tabsOn() ? tab : TAB_SLOTS;
                 } else {
                     zone = Z_CARDS;
-                    cardIndex = nearest(cardRects, cards.size(), shelf.isEmpty() ? w / 2f : tileRects[shelfIndex].centerX());
+                    if (isWatchTab() && Prefs.isWatchNextGrid() && cards.size() > 4) {
+                        int r1Count = cards.size() - 4;
+                        RectF[] r1Rects = new RectF[r1Count];
+                        System.arraycopy(cardRects, 4, r1Rects, 0, r1Count);
+                        cardIndex = 4 + nearest(r1Rects, r1Count, shelf.isEmpty() ? w / 2f : tileRects[shelfIndex].centerX());
+                    } else {
+                        cardIndex = nearest(cardRects, cards.size(), shelf.isEmpty() ? w / 2f : tileRects[shelfIndex].centerX());
+                    }
                 }
                 break;
             case Z_CARDS:
-                if (dx != 0) {
-                    int next = Math.max(0, Math.min(cards.size() - 1, cardIndex + dx));
-                    if (next == cardIndex) {
-                        if (!isWatchTab()) return true;
-                        int nextPage = watchPageStart + (dx > 0 ? 2 : -2);
-                        if (nextPage < 0 || nextPage >= watchNext.size()) return true;
-                        watchPrevious = new ArrayList<>(watchNext);
-                        watchPreviousStart = watchPageStart;
-                        watchPageStart = nextPage;
-                        watchSlideDirection = dx > 0 ? 1 : -1;
-                        watchSlideAt = SystemClock.uptimeMillis();
-                        updateCards();
-                        cardIndex = dx > 0 ? 0 : cards.size() - 1;
-                        spoken.focusMoved();
+                if (isWatchTab() && Prefs.isWatchNextGrid()) {
+                    int cols = 4;
+                    int curRow = cardIndex / cols;
+                    int curCol = cardIndex % cols;
+                    if (dx != 0) {
+                        int targetCol = curCol + dx;
+                        int targetIdx = curRow * cols + targetCol;
+                        if (targetCol >= 0 && targetCol < cols && targetIdx < cards.size()) {
+                            cardIndex = targetIdx;
+                            spoken.focusMoved();
+                            break;
+                        }
+                        return true;
+                    }
+                    if (dy > 0) {
+                        int targetRow = curRow + 1;
+                        int targetIdx = targetRow * cols + curCol;
+                        if (targetRow < 2 && targetIdx < cards.size()) {
+                            cardIndex = targetIdx;
+                            spoken.focusMoved();
+                            break;
+                        }
+                        if (watchPageStart + cols < watchNext.size()) {
+                            watchPageStart += cols;
+                            updateCards();
+                            cardIndex = Math.min(cards.size() - 1, cols + curCol);
+                            spoken.focusMoved();
+                            break;
+                        }
+                        zone = Z_SHELF;
+                        if (!shelf.isEmpty()) shelfIndex = nearest(tileRects, tileRects.length, cardRects[cardIndex].centerX());
                         break;
                     }
+                    if (dy < 0) {
+                        if (curRow > 0) {
+                            cardIndex = (curRow - 1) * cols + curCol;
+                            spoken.focusMoved();
+                            break;
+                        }
+                        if (watchPageStart > 0) {
+                            watchPageStart = Math.max(0, watchPageStart - cols);
+                            updateCards();
+                            cardIndex = curCol;
+                            spoken.focusMoved();
+                            break;
+                        }
+                        zone = Z_TOP;
+                        topIndex = tab;
+                        break;
+                    }
+                    break;
+                }
+                if (dx != 0) {
+                    if (isWatchTab()) {
+                        if (dx > 0) {
+                            if (cardIndex < 1 && cardIndex + 1 < cards.size()) {
+                                cardIndex++;
+                                spoken.focusMoved();
+                                break;
+                            }
+                            if (watchPageStart + 2 < watchNext.size()) {
+                                watchPrevious = new ArrayList<>(watchNext);
+                                watchPreviousStart = watchPageStart;
+                                watchPageStart++;
+                                watchSlideDirection = 1;
+                                watchSlideAt = SystemClock.uptimeMillis();
+                                updateCards();
+                                cardIndex = 1;
+                                spoken.focusMoved();
+                                break;
+                            }
+                            return true;
+                        } else {
+                            if (cardIndex > 0) {
+                                cardIndex--;
+                                spoken.focusMoved();
+                                break;
+                            }
+                            if (watchPageStart > 0) {
+                                watchPrevious = new ArrayList<>(watchNext);
+                                watchPreviousStart = watchPageStart;
+                                watchPageStart--;
+                                watchSlideDirection = -1;
+                                watchSlideAt = SystemClock.uptimeMillis();
+                                updateCards();
+                                cardIndex = 0;
+                                spoken.focusMoved();
+                                break;
+                            }
+                            return true;
+                        }
+                    }
+                    int next = Math.max(0, Math.min(cards.size() - 1, cardIndex + dx));
+                    if (next == cardIndex) return true;
                     cardIndex = next;
                 } else if (dy < 0) {
                     zone = Z_TOP;
@@ -3312,7 +3458,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                         zone = Z_SHELF;
                     } else {
                         zone = Z_CARDS;
-                        cardIndex = nearest(cardRects, cards.size(), topRects[topIndex].centerX());
+                        int maxCol = isWatchTab() && Prefs.isWatchNextGrid() ? Math.min(4, cards.size()) : cards.size();
+                        cardIndex = nearest(cardRects, maxCol, topRects[topIndex].centerX());
                     }
                 } else if (topIndex < TAB_SLOTS && !lightButtons.isEmpty()) {
                     topIndex = TAB_SLOTS;   // up from the tabs reaches the corner buttons without walking the row

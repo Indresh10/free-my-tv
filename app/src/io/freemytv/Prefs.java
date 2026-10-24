@@ -151,15 +151,31 @@ final class Prefs {
 
     // MARK: - Continue watching
 
+    static final String WATCH_LAYOUT_CAROUSEL = "carousel";
+    static final String WATCH_LAYOUT_GRID = "grid";
+
     static int watchNextCount() {
-        int count = sp().getInt("watchNextCount", 4);
-        return count >= 2 && count <= 4 ? count : 4;
+        int count = sp().getInt("watchNextCount", 10);
+        return count >= 2 && count <= 30 ? count : 10;
     }
 
     static void setWatchNextCount(int count) {
-        if (count < 2 || count > 4) throw new IllegalArgumentException("Continue watching count must be 2, 3 or 4");
+        if (count < 2 || count > 30) throw new IllegalArgumentException("Continue watching count must be between 2 and 30");
         sp().edit().putInt("watchNextCount", count).apply();
         version++;
+    }
+
+    static String watchNextLayout() {
+        return sp().getString("watchNextLayout", WATCH_LAYOUT_CAROUSEL);
+    }
+
+    static void setWatchNextLayout(String layout) {
+        sp().edit().putString("watchNextLayout", layout).apply();
+        version++;
+    }
+
+    static boolean isWatchNextGrid() {
+        return WATCH_LAYOUT_GRID.equals(watchNextLayout());
     }
 
     // MARK: - Shelf
